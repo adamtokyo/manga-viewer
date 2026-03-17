@@ -5,68 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Manga Viewer</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        body,
-        html {
-            overscroll-behavior-y: none;
-        }
-
-        /* Flash animation for tap zones */
-        .flash-active {
-            background-color: rgba(255, 255, 255, 0.15);
-        }
-
-        /* Looping tap-and-swipe animation for onboarding */
-        @keyframes tap-and-swipe {
-            0% {
-                transform: translate(-20px, 0) scale(1.5);
-                opacity: 0;
-            }
-
-            15% {
-                transform: translate(-20px, 0) scale(1);
-                opacity: 1;
-            }
-
-            /* Tap */
-            25% {
-                transform: translate(-20px, 0) scale(0.9);
-                opacity: 1;
-            }
-
-            35% {
-                transform: translate(-20px, 0) scale(1);
-                opacity: 1;
-            }
-
-            50% {
-                transform: translate(-20px, 0) scale(1);
-                opacity: 1;
-            }
-
-            80% {
-                transform: translate(80px, 0) scale(1);
-                opacity: 0;
-            }
-
-            /* Swipe right */
-            100% {
-                opacity: 0;
-            }
-        }
-
-        .animate-onboard {
-            animation: tap-and-swipe 2.5s infinite cubic-bezier(0.25, 0.1, 0.25, 1);
-        }
-
-        /* Hardware acceleration and crisp edges for zoomed images */
-        .crisp-image {
-            backface-visibility: hidden;
-            transform-origin: center center;
-            will-change: transform;
-        }
-    </style>
+    <link rel="stylesheet" href="./dist/output.css">
 </head>
 
 <body class="bg-black text-white touch-none overflow-hidden select-none w-screen h-screen relative">
