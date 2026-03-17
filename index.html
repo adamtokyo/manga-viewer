@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Manga Viewer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body,
+        html {
+            overscroll-behavior-y: none;
+        }
+
+        /* Flash animation for tap zones */
+        .flash-active {
+            background-color: rgba(255, 255, 255, 0.15);
+        }
+
+        /* Looping tap-and-swipe animation for onboarding */
+        @keyframes tap-and-swipe {
+            0% {
+                transform: translate(-20px, 0) scale(1.5);
+                opacity: 0;
+            }
+
+            15% {
+                transform: translate(-20px, 0) scale(1);
+                opacity: 1;
+            }
+
+            /* Tap */
+            25% {
+                transform: translate(-20px, 0) scale(0.9);
+                opacity: 1;
+            }
+
+            35% {
+                transform: translate(-20px, 0) scale(1);
+                opacity: 1;
+            }
+
+            50% {
+                transform: translate(-20px, 0) scale(1);
+                opacity: 1;
+            }
+
+            80% {
+                transform: translate(80px, 0) scale(1);
+                opacity: 0;
+            }
+
+            /* Swipe right */
+            100% {
+                opacity: 0;
+            }
+        }
+
+        .animate-onboard {
+            animation: tap-and-swipe 2.5s infinite cubic-bezier(0.25, 0.1, 0.25, 1);
+        }
+
+        /* Hardware acceleration and crisp edges for zoomed images */
+        .crisp-image {
+            backface-visibility: hidden;
+            transform-origin: center center;
+            will-change: transform;
+        }
+    </style>
+</head>
+
+<body class="bg-black text-white touch-none overflow-hidden select-none w-screen h-screen relative">
+
+    <!-- Manga Layers -->
+    <div id="manga-container" class="absolute inset-0 flex items-center justify-center w-full h-full">
+        <!-- Bottom Layer (Revealed during swipe) -->
+        <div id="layer-bottom" class="absolute inset-0 flex items-center justify-center w-full h-full">
+            <img id="img-bottom" class="crisp-image object-contain" draggable="false" />
+        </div>
+
+        <!-- Top Layer (Current Image) -->
+        <div id="layer-top" class="absolute inset-0 flex items-center justify-center w-full h-full">
+            <img id="img-top" class="crisp-image object-contain shadow-2xl" draggable="false" />
+        </div>
+    </div>
+
+    <!-- UI Overlay (Tap Zones & Icons) -->
+    <div id="ui-overlay" class="absolute inset-0 pointer-events-none w-full h-full flex flex-col z-50">
+
+        <!-- Top 1/5th: Fullscreen Toggle Zone -->
+        <div id="zone-top"
+            class="w-full h-[20%] pointer-events-none transition-colors duration-200 flex items-start justify-end p-4">
+            <button id="btn-fullscreen"
+                class="pointer-events-none p-3 bg-black/50 rounded-full backdrop-blur-sm transition-opacity duration-300 opacity-0 text-white hover:bg-white/20">
+                <svg id="icon-fs-enter" xmlns="http://www.w3.org/2000/svg" class="w-8 h-8" viewBox="0 0 24 24"
+                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path
+                        d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
+                </svg>
+                <svg id="icon-fs-exit" xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 hidden" viewBox="0 0 24 24"
+                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path
+                        d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3" />
+                </svg>
+            </button>
+        </div>
+
+        <!-- Middle 3/5th: Navigation Zones -->
+        <div class="w-full h-[60%] flex pointer-events-none">
+            <!-- Left 1/3 (Next Image) -->
+            <div id="zone-left"
+                class="w-1/3 h-full transition-colors duration-200 flex items-center justify-center relative">
+                <!-- Onboarding Animation -->
+                <div id="onboarding"
+                    class="flex flex-col items-center pointer-events-none transition-opacity duration-500">
+                    <svg class="w-16 h-16 text-white/80 animate-onboard drop-shadow-lg" viewBox="0 0 24 24"
+                        fill="currentColor">
+                        <path
+                            d="M9 11.24V7.5C9 6.12 10.12 5 11.5 5S14 6.12 14 7.5v3.74c1.21-.81 2-2.18 2-3.74C16 5.01 13.99 3 11.5 3S7 5.01 7 7.5c0 1.56.79 2.93 2 3.74zm9.84 4.63l-4.54-2.26c-.17-.07-.35-.11-.54-.11H13v-6c0-.83-.67-1.5-1.5-1.5S10 6.67 10 7.5v10.74l-3.43-.72c-.08-.01-.15-.03-.24-.03-.31 0-.59.13-.79.33l-.79.8 4.94 4.94c.27.27.65.44 1.04.44h6.79c.75 0 1.33-.55 1.44-1.28l.75-5.27c.01-.07.02-.14.02-.21 0-.69-.47-1.28-1.13-1.42z" />
+                    </svg>
+                </div>
+            </div>
+            <!-- Center 1/3 (Neutral) -->
+            <div class="w-1/3 h-full"></div>
+            <!-- Right 1/3 (Prev Image) -->
+            <div id="zone-right"
+                class="w-1/3 h-full transition-colors duration-200 flex items-center justify-center relative">
+            </div>
+        </div>
+
+        <!-- Bottom 1/5th: Return to Start Zone -->
+        <div id="zone-bottom"
+            class="w-full h-[20%] pointer-events-none transition-colors duration-200 flex items-end justify-end p-4">
+            <button id="btn-rewind"
+                class="pointer-events-none p-3 bg-black/50 rounded-full backdrop-blur-sm transition-opacity duration-300 opacity-0 text-white hover:bg-white/20 hidden">
+                <!-- Standard symbol for skipping to the beginning, appropriate for RTL -->
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 rotate-180" viewBox="0 0 24 24"
+                    fill="currentColor">
+                    <path
+                        d="M7 6c.55 0 1 .45 1 1v10c0 .55-.45 1-1 1s-1-.45-1-1V7c0-.55.45-1 1-1zm3.66 6.82l5.77 4.07c.66.47 1.58-.01 1.58-.82V7.93c0-.81-.91-1.28-1.58-.82l-5.77 4.07a1 1 0 0 0 0 1.64z" />
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- Centered Indicators (Loading / Error) -->
+    <div class="absolute inset-0 flex items-center justify-center pointer-events-none z-50">
+        <!-- Loading Spinner -->
+        <div id="loading-spinner"
+            class="opacity-0 transition-opacity duration-300 bg-black/60 p-4 rounded-xl backdrop-blur-md">
+            <svg class="animate-spin h-10 w-10 text-white" xmlns="http://www.w3.org/2000/svg" fill="none"
+                viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                </path>
+            </svg>
+        </div>
+
+        <!-- No Entry Icon -->
+        <div id="no-entry"
+            class="opacity-0 transition-opacity duration-300 bg-black/60 p-4 rounded-xl backdrop-blur-md absolute">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-16 h-16 text-red-500" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
+            </svg>
+        </div>
+    </div>
+
+    <script>
+        // --- Core State ---
+        let currentIndex = parseInt(localStorage.getItem('manga_index') || '0', 10);
+        let maxFoundIndex = Infinity;
+        let isTransitioning = false;
+
+        // --- Caching Engine (20 compressed, 3 decoded) ---
+        const blobCache = new Map();
+        const decodedCache = new Map();
+        const loadingPromises = new Map();
+        const MAX_READAHEAD = 20;
+
+        function getImagePath(index) {
+            return `${String(index).padStart(3, '0')}.avif`;
+        }
+
+        async function preloadCompressed(index) {
+            if (index > maxFoundIndex || blobCache.has(index)) return;
+            if (loadingPromises.has(index)) return loadingPromises.get(index);
+
+            const promise = (async () => {
+                try {
+                    const res = await fetch(getImagePath(index));
+                    if (!res.ok) {
+                        if (res.status === 404) maxFoundIndex = Math.min(maxFoundIndex, index - 1);
+                        return;
+                    }
+                    const blob = await res.blob();
+                    blobCache.set(index, URL.createObjectURL(blob));
+                } catch (e) {
+                    console.error("Fetch error:", e);
+                }
+            })();
+
+            loadingPromises.set(index, promise);
+            try {
+                await promise;
+            } finally {
+                loadingPromises.delete(index);
+            }
+        }
+
+        async function getDecodedImage(index) {
+            if (index < 0 || index > maxFoundIndex) return null;
+            if (decodedCache.has(index)) return decodedCache.get(index);
+
+            if (!blobCache.has(index)) {
+                await preloadCompressed(index);
+            }
+            if (!blobCache.has(index)) return null;
+
+            const img = new Image();
+            img.src = blobCache.get(index);
+            try {
+                await img.decode();
+                decodedCache.set(index, img);
+                return img;
+            } catch (e) {
+                console.error("Decode error:", e);
+                return null;
+            }
+        }
+
+        async function updateCache() {
+            // 1. Prioritize immediate neighbors (Current, Next, Prev)
+            const priority = [currentIndex, currentIndex + 1, currentIndex - 1];
+            for (const idx of priority) {
+                if (idx >= 0 && idx <= maxFoundIndex) preloadCompressed(idx);
+            }
+
+            // Clean up old compressed
+            for (const [idx, url] of blobCache.entries()) {
+                if (idx < currentIndex - 5 || idx > currentIndex + MAX_READAHEAD + 5) {
+                    URL.revokeObjectURL(url);
+                    blobCache.delete(idx);
+                }
+            }
+
+            // Keep exactly current, prev, next decoded
+            const needed = [currentIndex - 1, currentIndex, currentIndex + 1];
+            for (const idx of needed) {
+                if (idx >= 0 && idx <= maxFoundIndex) getDecodedImage(idx);
+            }
+
+            // Clean up old decoded
+            for (const idx of decodedCache.keys()) {
+                if (!needed.includes(idx)) decodedCache.delete(idx);
+            }
+
+            // 2. Deep readahead (delayed to allow critical requests to start first)
+            setTimeout(() => {
+                for (let i = currentIndex + 2; i <= currentIndex + MAX_READAHEAD; i++) {
+                    if (i <= maxFoundIndex) preloadCompressed(i);
+                }
+            }, 1000);
+        }
+
+        // --- DOM Elements ---
+        const layerTop = document.getElementById('layer-top');
+        const layerBottom = document.getElementById('layer-bottom');
+        const imgTop = document.getElementById('img-top');
+        const imgBottom = document.getElementById('img-bottom');
+
+        const btnFullscreen = document.getElementById('btn-fullscreen');
+        const iconFsEnter = document.getElementById('icon-fs-enter');
+        const iconFsExit = document.getElementById('icon-fs-exit');
+        const btnRewind = document.getElementById('btn-rewind');
+
+        const loadingSpinner = document.getElementById('loading-spinner');
+        const noEntryIcon = document.getElementById('no-entry');
+        const onboardingAnim = document.getElementById('onboarding');
+
+        // --- Viewport & Image Sizing Math ---
+        let renderedWidth = 0, renderedHeight = 0;
+
+        function updateContainerSizes() {
+            const screenRatio = window.innerWidth / window.innerHeight;
+            const imgRatio = 2 / 3;
+            if (screenRatio > imgRatio) {
+                renderedHeight = window.innerHeight;
+                renderedWidth = renderedHeight * imgRatio;
+            } else {
+                renderedWidth = window.innerWidth;
+                renderedHeight = renderedWidth / imgRatio;
+            }
+            imgTop.style.width = `${renderedWidth}px`;
+            imgTop.style.height = `${renderedHeight}px`;
+            imgBottom.style.width = `${renderedWidth}px`;
+            imgBottom.style.height = `${renderedHeight}px`;
+        }
+
+        window.addEventListener('resize', () => {
+            updateContainerSizes();
+            clampPan();
+            applyTransform();
+        });
+
+        // --- UI & Auto-hide Logic ---
+        let uiTimeout;
+        let isUIVisible = false;
+
+        function toggleUI() {
+            isUIVisible = !isUIVisible;
+            if (isUIVisible) showUI();
+            else hideUI();
+        }
+
+        function showUI() {
+            isUIVisible = true;
+            btnFullscreen.classList.remove('opacity-0');
+            btnFullscreen.classList.remove('pointer-events-none');
+            btnFullscreen.classList.add('pointer-events-auto');
+            if (currentIndex > 0) {
+                btnRewind.classList.remove('hidden');
+                btnRewind.classList.remove('pointer-events-none');
+                btnRewind.classList.add('pointer-events-auto');
+                // slight delay to allow display:block to apply before opacity transition
+                requestAnimationFrame(() => btnRewind.classList.remove('opacity-0'));
+            }
+
+            clearTimeout(uiTimeout);
+            uiTimeout = setTimeout(hideUI, 5000);
+
+            // Onboarding disappears permanently after 5s if active
+            if (onboardingAnim.style.display !== 'none') {
+                setTimeout(() => {
+                    onboardingAnim.style.opacity = '0';
+                    setTimeout(() => onboardingAnim.style.display = 'none', 500);
+                }, 5000);
+            }
+        }
+
+        function hideUI() {
+            isUIVisible = false;
+            btnFullscreen.classList.add('opacity-0');
+            btnFullscreen.classList.remove('pointer-events-auto');
+            btnFullscreen.classList.add('pointer-events-none');
+            btnRewind.classList.add('opacity-0');
+            btnRewind.classList.remove('pointer-events-auto');
+            btnRewind.classList.add('pointer-events-none');
+            clearTimeout(uiTimeout);
+        }
+
+        function flashElement(id) {
+            const el = document.getElementById(id);
+            el.classList.add('flash-active');
+            setTimeout(() => el.classList.remove('flash-active'), 200);
+            showUI();
+        }
+
+        function showNoEntry() {
+            noEntryIcon.style.opacity = '1';
+            setTimeout(() => noEntryIcon.style.opacity = '0', 1000);
+        }
+
+        function toggleLoading(show) {
+            loadingSpinner.style.opacity = show ? '1' : '0';
+        }
+
+        // --- Display Logic ---
+        async function renderCurrent(forceFullRender = false) {
+            updateCache();
+            toggleLoading(true);
+            const img = await getDecodedImage(currentIndex);
+            toggleLoading(false);
+
+            if (!img) {
+                // If we failed to get 000.avif, maybe handle gracefully. 
+                return;
+            }
+
+            imgTop.src = img.src;
+            localStorage.setItem('manga_index', currentIndex);
+
+            if (currentIndex === 0) {
+                btnRewind.classList.add('hidden', 'opacity-0');
+            } else if (isUIVisible) {
+                btnRewind.classList.remove('hidden');
+                btnRewind.classList.remove('pointer-events-none');
+                btnRewind.classList.add('pointer-events-auto');
+                requestAnimationFrame(() => btnRewind.classList.remove('opacity-0'));
+            }
+        }
+
+        async function prepareAdjacentImage(offset) {
+            const targetIdx = currentIndex + offset;
+            if (targetIdx < 0 || targetIdx > maxFoundIndex) return false;
+
+            let img = decodedCache.get(targetIdx);
+            if (!img) {
+                toggleLoading(true);
+                img = await getDecodedImage(targetIdx);
+                toggleLoading(false);
+            }
+            if (img) {
+                imgBottom.src = img.src;
+                return true;
+            }
+            return false;
+        }
+
+        // --- Navigation Animations ---
+        async function animateTo(offset) {
+            if (isTransitioning) return;
+            const targetIdx = currentIndex + offset;
+            if (targetIdx < 0) return;
+
+            const isReady = await prepareAdjacentImage(offset);
+            if (!isReady) {
+                if (offset > 0) showNoEntry();
+                return;
+            }
+
+            isTransitioning = true;
+            // Next (offset +1): Swipe Right -> layerTop moves right (+100vw)
+            // Prev (offset -1): Swipe Left -> layerTop moves left (-100vw)
+            const dirX = offset > 0 ? window.innerWidth : -window.innerWidth;
+
+            layerTop.style.transition = 'transform 0.2s ease-out';
+            layerTop.style.transform = `translateX(${dirX}px)`;
+
+            setTimeout(() => {
+                currentIndex = targetIdx;
+                layerTop.style.transition = 'none';
+                layerTop.style.transform = 'translateX(0)';
+                resetZoom();
+                renderCurrent();
+                isTransitioning = false;
+            }, 200);
+        }
+
+        function gotoNext() { animateTo(1); }
+        function gotoPrev() { animateTo(-1); }
+
+        function jumpToStart() {
+            if (isTransitioning || currentIndex === 0) return;
+            currentIndex = 0;
+            resetZoom();
+            renderCurrent();
+            hideUI();
+        }
+
+        // --- Zoom and Pan State ---
+        let scale = 1;
+        let panX = 0, panY = 0;
+
+        function isZoomed() { return scale > 1.01; }
+
+        function resetZoom() {
+            scale = 1;
+            panX = 0;
+            panY = 0;
+            applyTransform();
+        }
+
+        function clampPan() {
+            if (!isZoomed()) {
+                panX = 0; panY = 0;
+                return;
+            }
+            const maxPanX = Math.max(0, (renderedWidth * scale - window.innerWidth) / 2);
+            const maxPanY = Math.max(0, (renderedHeight * scale - window.innerHeight) / 2);
+            panX = Math.max(-maxPanX, Math.min(maxPanX, panX));
+            panY = Math.max(-maxPanY, Math.min(maxPanY, panY));
+        }
+
+        function applyTransform() {
+            if (isZoomed()) {
+                imgTop.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+            } else {
+                imgTop.style.transform = `translate(0px, 0px) scale(1)`;
+            }
+        }
+
+        // --- Gesture Handling ---
+        let pointers = [];
+        let initialPinchDist = 0;
+        let initialScale = 1;
+        let initialPinchCenter = { x: 0, y: 0 };
+        let initialPinchPan = { x: 0, y: 0 };
+        let startX = 0, startY = 0;
+        let lastPanX = 0, lastPanY = 0;
+        let startTime = 0;
+        let swipeOffsetPrepared = 0; // 1 for next, -1 for prev
+
+        const mangaContainer = document.getElementById('manga-container');
+
+        mangaContainer.addEventListener('pointerdown', (e) => {
+            if (e.target.closest('button')) return; // Ignore button clicks
+            e.preventDefault();
+            pointers.push({ id: e.pointerId, x: e.clientX, y: e.clientY });
+
+            if (pointers.length === 2) {
+                initialPinchDist = Math.hypot(pointers[0].x - pointers[1].x, pointers[0].y - pointers[1].y);
+                initialScale = scale;
+                initialPinchCenter = {
+                    x: (pointers[0].x + pointers[1].x) / 2 - window.innerWidth / 2,
+                    y: (pointers[0].y + pointers[1].y) / 2 - window.innerHeight / 2
+                };
+                initialPinchPan = { x: panX, y: panY };
+            } else if (pointers.length === 1) {
+                startX = e.clientX;
+                startY = e.clientY;
+                lastPanX = panX;
+                lastPanY = panY;
+                startTime = Date.now();
+                layerTop.style.transition = 'none';
+                swipeOffsetPrepared = 0;
+            }
+        });
+
+        mangaContainer.addEventListener('pointermove', async (e) => {
+            e.preventDefault();
+            const idx = pointers.findIndex(p => p.id === e.pointerId);
+            if (idx !== -1) {
+                pointers[idx].x = e.clientX;
+                pointers[idx].y = e.clientY;
+            }
+
+            if (pointers.length === 2) {
+                const dist = Math.hypot(pointers[0].x - pointers[1].x, pointers[0].y - pointers[1].y);
+                scale = initialScale * (dist / initialPinchDist);
+                scale = Math.max(1, Math.min(scale, 5));
+
+                const currentCenter = {
+                    x: (pointers[0].x + pointers[1].x) / 2 - window.innerWidth / 2,
+                    y: (pointers[0].y + pointers[1].y) / 2 - window.innerHeight / 2
+                };
+                const scaleRatio = scale / initialScale;
+                panX = currentCenter.x - (initialPinchCenter.x - initialPinchPan.x) * scaleRatio;
+                panY = currentCenter.y - (initialPinchCenter.y - initialPinchPan.y) * scaleRatio;
+
+                clampPan();
+                applyTransform();
+            } else if (pointers.length === 1 && !isTransitioning) {
+                const dx = e.clientX - startX;
+                const dy = e.clientY - startY;
+
+                if (isZoomed()) {
+                    panX = lastPanX + dx;
+                    panY = lastPanY + dy;
+                    clampPan();
+                    applyTransform();
+                } else {
+                    // Swiping
+                    if (Math.abs(dx) > 10) { // Deadzone
+                        const offset = dx > 0 ? 1 : -1; // dx>0 (drag right) = Next, dx<0 (drag left) = Prev
+                        if (swipeOffsetPrepared !== offset) {
+                            const ready = await prepareAdjacentImage(offset);
+                            if (ready) swipeOffsetPrepared = offset;
+                            else swipeOffsetPrepared = 0; // Hit boundary
+                        }
+
+                        if (swipeOffsetPrepared !== 0) {
+                            layerTop.style.transform = `translateX(${dx}px)`;
+                        }
+                    }
+                }
+            }
+        });
+
+        function handlePointerUp(e) {
+            const idx = pointers.findIndex(p => p.id === e.pointerId);
+            if (idx !== -1) pointers.splice(idx, 1);
+
+            if (pointers.length === 1) {
+                startX = pointers[0].x;
+                startY = pointers[0].y;
+                lastPanX = panX;
+                lastPanY = panY;
+            }
+
+            if (pointers.length === 0 && !isTransitioning) {
+                const dx = e.clientX - startX;
+                const dy = e.clientY - startY;
+                const duration = Date.now() - startTime;
+
+                if (isZoomed()) {
+                    // Panning ends
+                } else {
+                    // Swiping logic
+                    if (Math.abs(dx) > 50 && swipeOffsetPrepared !== 0) {
+                        // Commit swipe
+                        animateTo(swipeOffsetPrepared);
+                    } else if (Math.abs(dx) > 10) {
+                        // Revert swipe
+                        layerTop.style.transition = 'transform 0.2s ease-out';
+                        layerTop.style.transform = 'translateX(0)';
+                        setTimeout(() => layerTop.style.transition = 'none', 200);
+                    } else if (Math.abs(dx) <= 10 && Math.abs(dy) <= 10 && duration < 300) {
+                        // Tap detected
+                        handleTap(e.clientX, e.clientY);
+                    }
+                }
+                swipeOffsetPrepared = 0;
+            }
+        }
+
+        mangaContainer.addEventListener('pointerup', handlePointerUp);
+        mangaContainer.addEventListener('pointercancel', handlePointerUp);
+
+        // --- Mouse Wheel Zoom ---
+        mangaContainer.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const zoomAmount = -e.deltaY * 0.005;
+            const newScale = Math.max(1, Math.min(scale + zoomAmount, 5));
+            const mouseX = e.clientX - window.innerWidth / 2;
+            const mouseY = e.clientY - window.innerHeight / 2;
+            panX = mouseX - (mouseX - panX) * (newScale / scale);
+            panY = mouseY - (mouseY - panY) * (newScale / scale);
+            scale = newScale;
+            clampPan();
+            applyTransform();
+        }, { passive: false });
+
+        // --- Tap Zones Logic ---
+        function handleTap(x, y) {
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+
+            if (y < h * 0.2) {
+                flashElement('zone-top');
+            } else if (y > h * 0.8) {
+                flashElement('zone-bottom');
+            } else {
+                if (x < w / 3) {
+                    flashElement('zone-left');
+                    gotoNext();
+                } else if (x > w * 2 / 3) {
+                    flashElement('zone-right');
+                    gotoPrev();
+                }
+            }
+        }
+
+        // --- Button Listeners ---
+        btnFullscreen.addEventListener('pointerdown', (e) => e.stopPropagation());
+        btnFullscreen.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(() => { });
+            } else {
+                document.exitFullscreen().catch(() => { });
+            }
+        });
+
+        btnRewind.addEventListener('pointerdown', (e) => e.stopPropagation());
+        btnRewind.addEventListener('click', jumpToStart);
+
+        document.addEventListener('fullscreenchange', () => {
+            if (document.fullscreenElement) {
+                iconFsEnter.classList.add('hidden');
+                iconFsExit.classList.remove('hidden');
+            } else {
+                iconFsEnter.classList.remove('hidden');
+                iconFsExit.classList.add('hidden');
+            }
+            setTimeout(updateContainerSizes, 100);
+        });
+
+        // --- Keyboard Controls ---
+        document.addEventListener('keydown', (e) => {
+            if (isZoomed()) {
+                const panAmount = 50;
+                if (e.key === 'ArrowLeft') panX += panAmount;
+                else if (e.key === 'ArrowRight') panX -= panAmount;
+                else if (e.key === 'ArrowUp') panY += panAmount;
+                else if (e.key === 'ArrowDown') panY -= panAmount;
+                clampPan();
+                applyTransform();
+            } else {
+                if (e.key === 'ArrowLeft') gotoNext();
+                else if (e.key === 'ArrowRight') gotoPrev();
+            }
+        });
+
+        // --- Init ---
+        updateContainerSizes();
+        showUI(); // Initial 5s display of UI
+        renderCurrent(true);
+
+        // Hide onboarding if not first image
+        if (currentIndex !== 0) {
+            onboardingAnim.style.display = 'none';
+        }
+    </script>
+</body>
+
+</html>
