@@ -4,9 +4,9 @@
   "description": "A responsive manga viewer with touch gestures and zoom support",
   "main": "index.html",
   "scripts": {
-    "build": "tailwindcss -i ./src/input.css -o ./dist/output.css --minify",
+    "build": "tailwindcss -i ./src/input.css -o ./dist/output.css --minify && node scripts/build.js",
     "dev": "tailwindcss -i ./src/input.css -o ./dist/output.css --watch",
-    "build:prod": "NODE_ENV=production tailwindcss -i ./src/input.css -o ./dist/output.css --minify"
+    "build:prod": "NODE_ENV=production tailwindcss -i ./src/input.css -o ./dist/output.css --minify && node scripts/build.js"
   },
   "keywords": [
     "manga",
