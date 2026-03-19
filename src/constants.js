@@ -22,7 +22,7 @@ export const TIMING = {
   LOADING_TRANSITION: 300,      // ms for loading spinner fade
   ONBOARDING_DISPLAY: 5000,     // ms before onboarding fades
   ONBOARDING_FADE: 500,         // ms for onboarding fade duration
-  DEEP_READAHEAD_DELAY: 1000,   // ms before starting deep readahead
+  DEEP_READAHEAD_DELAY: 100,   // ms before starting deep readahead
   FS_CHANGE_DELAY: 100,         // ms after fullscreen change for resize
 };
 

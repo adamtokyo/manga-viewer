@@ -73,11 +73,13 @@ async function getDecodedImage(index) {
 }
 
 async function updateCache() {
-  // 1. Prioritize immediate neighbors (Current, Next, Prev)
-  const priority = [currentIndex, currentIndex + 1, currentIndex - 1];
-  for (const idx of priority) {
-    if (idx >= 0 && idx <= maxFoundIndex) preloadCompressed(idx);
-  }
+  // 1. Prioritize current
+  await preloadCompressed(currentIndex);
+
+  // 2. Prioritize immediate neighbors (Next, Prev)
+  const priority = [currentIndex + 1, currentIndex - 1];
+  const neighborPromises = priority.map(idx => Promise.resolve(preloadCompressed(idx)));
+  await Promise.all(neighborPromises);
 
   // Clean up old compressed
   for (const [idx, url] of blobCache.entries()) {
