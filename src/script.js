@@ -25,13 +25,13 @@ function getImagePath(index) {
   return `${String(index).padStart(3, '0')}.avif`;
 }
 
-async function preloadCompressed(index) {
+async function preloadCompressed(index, priority = "auto") {
   if (index > maxFoundIndex || blobCache.has(index)) return;
   if (loadingPromises.has(index)) return loadingPromises.get(index);
 
   const promise = (async () => {
     try {
-      const res = await fetch(getImagePath(index));
+      const res = await fetch(getImagePath(index), { priority });
       if (!res.ok) {
         if (res.status === 404) maxFoundIndex = Math.min(maxFoundIndex, index - 1);
         return;
@@ -74,11 +74,11 @@ async function getDecodedImage(index) {
 
 async function updateCache() {
   // 1. Prioritize current
-  await preloadCompressed(currentIndex);
+  await preloadCompressed(currentIndex, "high");
 
   // 2. Prioritize immediate neighbors (Next, Prev)
   const priority = [currentIndex + 1, currentIndex - 1];
-  const neighborPromises = priority.map(idx => Promise.resolve(preloadCompressed(idx)));
+  const neighborPromises = priority.map(idx => Promise.resolve(preloadCompressed(idx, "high")));
   await Promise.all(neighborPromises);
 
   // Clean up old compressed
