@@ -21,6 +21,44 @@ const blobCache = new Map();
 const decodedCache = new Map();
 const loadingPromises = new Map();
 
+// ===== FETCH QUEUE SYSTEM =====
+const fetchQueue = [];
+let activeFetches = 0;
+const MAX_CONCURRENT_FETCHES = 2;
+
+async function processFetchQueue() {
+  while (activeFetches < MAX_CONCURRENT_FETCHES && fetchQueue.length > 0) {
+    activeFetches++;
+    const { index, priority } = fetchQueue.shift();
+    
+    try {
+      await preloadCompressed(index, priority);
+    } finally {
+      activeFetches--;
+    }
+  }
+}
+
+function queuedPreload(index, priority = "auto") {
+  if (index > maxFoundIndex || blobCache.has(index)) return Promise.resolve();
+  if (loadingPromises.has(index)) return loadingPromises.get(index);
+  
+  return new Promise((resolve) => {
+    fetchQueue.push({ index, priority, resolve });
+    processFetchQueue();
+    
+    // Track this as a loading promise so getDecodedImage can wait for it
+    const wrapped = (async () => {
+      while (fetchQueue.some(item => item.index === index)) {
+        await new Promise(r => setTimeout(r, 10));
+      }
+      await (loadingPromises.get(index) || Promise.resolve());
+      resolve();
+    })();
+    loadingPromises.set(index, wrapped);
+  });
+}
+
 function getImagePath(index) {
   return `${String(index).padStart(3, '0')}.avif`;
 }
@@ -107,7 +145,7 @@ async function updateCache() {
   // 2. Deep readahead (delayed to allow critical requests to start first)
   setTimeout(() => {
     for (let i = currentIndex + 2; i <= currentIndex + CACHE.MAX_READAHEAD; i++) {
-      if (i <= maxFoundIndex) preloadCompressed(i);
+      if (i <= maxFoundIndex) queuedPreload(i);
     }
   }, TIMING.DEEP_READAHEAD_DELAY);
 }
