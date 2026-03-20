@@ -77,9 +77,13 @@ async function updateCache() {
   await preloadCompressed(currentIndex, "high");
 
   // 2. Prioritize immediate neighbors (Next, Prev)
-  const priority = [currentIndex + 1, currentIndex - 1];
-  const neighborPromises = priority.map(idx => Promise.resolve(preloadCompressed(idx, "high")));
-  await Promise.all(neighborPromises);
+  if (currentIndex > 0) {
+    const priority = [currentIndex + 1, currentIndex - 1];
+    const neighborPromises = priority.map(idx => Promise.resolve(preloadCompressed(idx, "high")));
+    await Promise.all(neighborPromises);
+  } else {
+    await preloadCompressed(currentIndex + 1, "high");
+  }
 
   // Clean up old compressed
   for (const [idx, url] of blobCache.entries()) {
