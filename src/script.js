@@ -255,6 +255,7 @@ async function renderCurrent(forceFullRender = false) {
   toggleLoading(false);
 
   if (!img) {
+    isTransitioning = false; // Ensure we don't get stuck
     return;
   }
 
@@ -301,20 +302,51 @@ async function animateTo(offset) {
   }
 
   isTransitioning = true;
-  // Next (offset +1): Swipe Right -> layerTop moves right (+100vw)
-  // Prev (offset -1): Swipe Left -> layerTop moves left (-100vw)
+  // Next (offset +1): Swipe Right -> layerTop moves right (+100vw), layerBottom moves from left (-100vw) to center
+  // Prev (offset -1): Swipe Left -> layerTop moves left (-100vw), layerBottom moves from right (+100vw) to center
   const dirX = offset > 0 ? window.innerWidth : -window.innerWidth;
+  const startXBottom = -dirX; // Opposite direction
 
+  // Set up bottom layer starting position
+  layerBottom.style.transition = 'none';
+  layerBottom.style.transform = `translateX(${startXBottom}px)`;
+
+  // Force reflow to ensure the transform is applied before animation
+  layerBottom.offsetHeight;
+
+  // Start animation for both layers
   layerTop.style.transition = `transform ${TIMING.SWIPE_ANIMATION}ms ${EASING.SWIPE}`;
+  layerBottom.style.transition = `transform ${TIMING.SWIPE_ANIMATION}ms ${EASING.SWIPE}`;
   layerTop.style.transform = `translateX(${dirX}px)`;
+  layerBottom.style.transform = 'translateX(0)';
 
   setTimeout(() => {
-    currentIndex = targetIdx;
+    // Animation complete - swap layers
+    const tempSrc = imgTop.src;
+    imgTop.src = imgBottom.src;
+    imgBottom.src = tempSrc;
+
+    // Reset transforms
     layerTop.style.transition = 'none';
+    layerBottom.style.transition = 'none';
     layerTop.style.transform = 'translateX(0)';
+    layerBottom.style.transform = `translateX(${startXBottom}px)`;
+
+    currentIndex = targetIdx;
     resetZoom();
-    renderCurrent();
+    localStorage.setItem(STORAGE_KEY, currentIndex);
+    updateCache();
     isTransitioning = false;
+
+    // Update UI
+    if (currentIndex === 0) {
+      btnRewind.classList.add('hidden', 'opacity-0');
+    } else if (isUIVisible) {
+      btnRewind.classList.remove('hidden');
+      btnRewind.classList.remove('pointer-events-none');
+      btnRewind.classList.add('pointer-events-auto');
+      requestAnimationFrame(() => btnRewind.classList.remove('opacity-0'));
+    }
   }, TIMING.SWIPE_ANIMATION);
 }
 
@@ -392,6 +424,7 @@ mangaContainer.addEventListener('pointerdown', (e) => {
     lastPanY = panY;
     startTime = Date.now();
     layerTop.style.transition = 'none';
+    layerBottom.style.transition = 'none';
     swipeOffsetPrepared = 0;
   }
 });
@@ -434,12 +467,21 @@ mangaContainer.addEventListener('pointermove', async (e) => {
         const offset = dx > 0 ? 1 : -1; // dx>0 (drag right) = Next, dx<0 (drag left) = Prev
         if (swipeOffsetPrepared !== offset) {
           const ready = await prepareAdjacentImage(offset);
-          if (ready) swipeOffsetPrepared = offset;
-          else swipeOffsetPrepared = 0; // Hit boundary
+          if (ready) {
+            swipeOffsetPrepared = offset;
+            // Position bottom layer for the swipe
+            const bottomStartX = offset > 0 ? -window.innerWidth : window.innerWidth;
+            layerBottom.style.transition = 'none';
+            layerBottom.style.transform = `translateX(${bottomStartX}px)`;
+          } else {
+            swipeOffsetPrepared = 0; // Hit boundary
+          }
         }
 
         if (swipeOffsetPrepared !== 0) {
+          const bottomStartX = swipeOffsetPrepared > 0 ? -window.innerWidth : window.innerWidth;
           layerTop.style.transform = `translateX(${dx}px)`;
+          layerBottom.style.transform = `translateX(${bottomStartX + dx}px)`;
         }
       }
     }
@@ -472,8 +514,13 @@ function handlePointerUp(e) {
       } else if (Math.abs(dx) > GESTURES.SWIPE_DEADZONE) {
         // Revert swipe
         layerTop.style.transition = `transform ${TIMING.SWIPE_ANIMATION}ms ${EASING.SWIPE}`;
+        layerBottom.style.transition = `transform ${TIMING.SWIPE_ANIMATION}ms ${EASING.SWIPE}`;
         layerTop.style.transform = 'translateX(0)';
-        setTimeout(() => layerTop.style.transition = 'none', TIMING.SWIPE_ANIMATION);
+        layerBottom.style.transform = `translateX(${swipeOffsetPrepared > 0 ? window.innerWidth : -window.innerWidth}px)`;
+        setTimeout(() => {
+          layerTop.style.transition = 'none';
+          layerBottom.style.transition = 'none';
+        }, TIMING.SWIPE_ANIMATION);
       } else if (Math.abs(dx) <= GESTURES.TAP_THRESHOLD && Math.abs(dy) <= GESTURES.TAP_THRESHOLD && duration < GESTURES.TAP_DURATION) {
         // Tap detected
         handleTap(e.clientX, e.clientY);
