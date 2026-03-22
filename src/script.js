@@ -164,7 +164,6 @@ async function updateCache() {
 
 // ===== DOM ELEMENTS =====
 const layerTop = document.getElementById('layer-top');
-const layerBottom = document.getElementById('layer-bottom');
 const imgTop = document.getElementById('img-top');
 const imgBottom = document.getElementById('img-bottom');
 
@@ -260,7 +259,7 @@ function toggleLoading(show) {
 }
 
 // ===== DISPLAY LOGIC =====
-async function renderCurrent(forceFullRender = false) {
+async function renderCurrent() {
   updateCache();
   toggleLoading(true);
   const img = await getDecodedImage(currentIndex);
@@ -579,7 +578,7 @@ document.addEventListener('keydown', (e) => {
 // ===== INITIALIZATION =====
 updateContainerSizes();
 showUI(); // Initial display of UI
-renderCurrent(true);
+renderCurrent();
 
 // Hide onboarding if not first image
 if (currentIndex !== 0) {
