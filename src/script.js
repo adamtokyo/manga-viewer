@@ -20,22 +20,43 @@ let isTransitioning = false;
 const blobCache = new Map();
 const decodedCache = new Map();
 const loadingPromises = new Map();
+const imagePool = [];
 
 // ===== FETCH QUEUE SYSTEM =====
 const fetchQueue = [];
 let activeFetches = 0;
 const MAX_CONCURRENT_FETCHES = 2;
 
+function getImagePath(index) {
+  return `${String(index).padStart(3, '0')}.avif`;
+}
+
+async function doFetch(index, priority) {
+  try {
+    const res = await fetch(getImagePath(index), { priority });
+    if (!res.ok) {
+      if (res.status === 404) maxFoundIndex = Math.min(maxFoundIndex, index - 1);
+      return;
+    }
+    const blob = await res.blob();
+    blobCache.set(index, URL.createObjectURL(blob));
+  } catch (e) {
+    console.error('Fetch error:', e);
+  }
+}
+
 async function processFetchQueue() {
   while (activeFetches < MAX_CONCURRENT_FETCHES && fetchQueue.length > 0) {
     activeFetches++;
-    const { index, priority } = fetchQueue.shift();
-
+    const { index, priority, resolve } = fetchQueue.shift();
+    
     try {
-      await preloadCompressed(index, priority);
+      if (!blobCache.has(index)) {
+        await doFetch(index, priority);
+      }
     } finally {
-      processFetchQueue();
       activeFetches--;
+      resolve();
     }
   }
 }
@@ -43,50 +64,36 @@ async function processFetchQueue() {
 function queuedPreload(index, priority = "auto") {
   if (index > maxFoundIndex || blobCache.has(index)) return Promise.resolve();
   if (loadingPromises.has(index)) return loadingPromises.get(index);
-
-  return new Promise((resolve) => {
+  
+  const promise = new Promise((resolve) => {
     fetchQueue.push({ index, priority, resolve });
     processFetchQueue();
-
-    // Track this as a loading promise so getDecodedImage can wait for it
-    const wrapped = (async () => {
-      while (fetchQueue.some(item => item.index === index)) {
-        await new Promise(r => setTimeout(r, 10));
-      }
-      await (loadingPromises.get(index) || Promise.resolve());
-      resolve();
-    })();
-    loadingPromises.set(index, wrapped);
   });
-}
-
-function getImagePath(index) {
-  return `${String(index).padStart(3, '0')}.avif`;
+  
+  loadingPromises.set(index, promise);
+  
+  promise.finally(() => {
+    if (loadingPromises.get(index) === promise) {
+      loadingPromises.delete(index);
+    }
+  });
+  
+  return promise;
 }
 
 async function preloadCompressed(index, priority = "auto") {
   if (index > maxFoundIndex || blobCache.has(index)) return;
   if (loadingPromises.has(index)) return loadingPromises.get(index);
 
-  const promise = (async () => {
-    try {
-      const res = await fetch(getImagePath(index), { priority });
-      if (!res.ok) {
-        if (res.status === 404) maxFoundIndex = Math.min(maxFoundIndex, index - 1);
-        return;
-      }
-      const blob = await res.blob();
-      blobCache.set(index, URL.createObjectURL(blob));
-    } catch (e) {
-      console.error('Fetch error:', e);
-    }
-  })();
-
+  const promise = doFetch(index, priority);
   loadingPromises.set(index, promise);
+  
   try {
     await promise;
   } finally {
-    loadingPromises.delete(index);
+    if (loadingPromises.get(index) === promise) {
+      loadingPromises.delete(index);
+    }
   }
 }
 
@@ -99,7 +106,7 @@ async function getDecodedImage(index) {
   }
   if (!blobCache.has(index)) return null;
 
-  const img = new Image();
+  const img = imagePool.length > 0 ? imagePool.pop() : new Image();
   img.src = blobCache.get(index);
   try {
     await img.decode();
@@ -139,8 +146,12 @@ async function updateCache() {
   }
 
   // Clean up old decoded
-  for (const idx of decodedCache.keys()) {
-    if (!needed.includes(idx)) decodedCache.delete(idx);
+  for (const [idx, img] of decodedCache.entries()) {
+    if (!needed.includes(idx)) {
+      img.src = '';
+      imagePool.push(img);
+      decodedCache.delete(idx);
+    }
   }
 
   // 2. Deep readahead (delayed to allow critical requests to start first)
