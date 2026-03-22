@@ -30,10 +30,11 @@ async function processFetchQueue() {
   while (activeFetches < MAX_CONCURRENT_FETCHES && fetchQueue.length > 0) {
     activeFetches++;
     const { index, priority } = fetchQueue.shift();
-    
+
     try {
       await preloadCompressed(index, priority);
     } finally {
+      processFetchQueue();
       activeFetches--;
     }
   }
@@ -42,11 +43,11 @@ async function processFetchQueue() {
 function queuedPreload(index, priority = "auto") {
   if (index > maxFoundIndex || blobCache.has(index)) return Promise.resolve();
   if (loadingPromises.has(index)) return loadingPromises.get(index);
-  
+
   return new Promise((resolve) => {
     fetchQueue.push({ index, priority, resolve });
     processFetchQueue();
-    
+
     // Track this as a loading promise so getDecodedImage can wait for it
     const wrapped = (async () => {
       while (fetchQueue.some(item => item.index === index)) {
