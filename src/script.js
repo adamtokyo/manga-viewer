@@ -409,6 +409,9 @@ mangaContainer.addEventListener('pointerdown', (e) => {
 });
 
 mangaContainer.addEventListener('pointermove', async (e) => {
+  if (e.pointerType === 'mouse' && pointers.length === 0) {
+    showUI();
+  }
   e.preventDefault();
   const idx = pointers.findIndex(p => p.id === e.pointerId);
   if (idx !== -1) {
@@ -528,6 +531,8 @@ function handleTap(x, y) {
     } else if (x > w * UI_ZONES.RIGHT_THIRD) {
       flashElement('zone-right');
       gotoPrev();
+    } else {
+      showUI();
     }
   }
 }
