@@ -17,25 +17,30 @@ let maxFoundIndex = Infinity;
 let isTransitioning = false;
 
 // ===== CACHING ENGINE =====
-const blobCache = new Map();
-const decodedCache = new Map();
-const loadingPromises = new Map();
+const blobCacheLow = new Map();
+const blobCacheHigh = new Map();
+const decodedCacheLow = new Map();
+const decodedCacheHigh = new Map();
+const loadingPromisesLow = new Map();
+const loadingPromisesHigh = new Map();
 const imagePool = [];
 
 // ===== FETCH QUEUE SYSTEM =====
-const fetchQueue = [];
+const fetchQueueLow = [];
+const fetchQueueHigh = [];
 let activeFetches = 0;
 const MAX_CONCURRENT_FETCHES = 2;
 
-function getImagePath(index) {
-  return `${String(index).padStart(3, '0')}.avif`;
+function getImagePath(index, type) {
+  return `${type}-${String(index).padStart(3, '0')}.avif`;
 }
 
-async function doFetch(index, priority) {
+async function doFetch(index, priority, type) {
+  const blobCache = type === 'low' ? blobCacheLow : blobCacheHigh;
   try {
-    const res = await fetch(getImagePath(index), { priority });
+    const res = await fetch(getImagePath(index, type), { priority });
     if (!res.ok) {
-      if (res.status === 404) maxFoundIndex = Math.min(maxFoundIndex, index - 1);
+      if (res.status === 404 && type === 'low') maxFoundIndex = Math.min(maxFoundIndex, index - 1);
       return;
     }
     const blob = await res.blob();
@@ -46,13 +51,26 @@ async function doFetch(index, priority) {
 }
 
 async function processFetchQueue() {
-  while (activeFetches < MAX_CONCURRENT_FETCHES && fetchQueue.length > 0) {
+  while (activeFetches < MAX_CONCURRENT_FETCHES) {
+    let item;
+    let type;
+    if (fetchQueueLow.length > 0) {
+      item = fetchQueueLow.shift();
+      type = 'low';
+    } else if (fetchQueueHigh.length > 0) {
+      item = fetchQueueHigh.shift();
+      type = 'high';
+    } else {
+      break;
+    }
+
     activeFetches++;
-    const { index, priority, resolve } = fetchQueue.shift();
+    const { index, priority, resolve } = item;
+    const blobCache = type === 'low' ? blobCacheLow : blobCacheHigh;
     
     try {
       if (!blobCache.has(index)) {
-        await doFetch(index, priority);
+        await doFetch(index, priority, type);
       }
     } finally {
       activeFetches--;
@@ -61,12 +79,21 @@ async function processFetchQueue() {
   }
 }
 
-function queuedPreload(index, priority = "auto") {
+function queuedPreload(index, priority = "auto", type = "low") {
+  const blobCache = type === 'low' ? blobCacheLow : blobCacheHigh;
+  const loadingPromises = type === 'low' ? loadingPromisesLow : loadingPromisesHigh;
+  const fetchQueue = type === 'low' ? fetchQueueLow : fetchQueueHigh;
+
   if (index > maxFoundIndex || blobCache.has(index)) return Promise.resolve();
   if (loadingPromises.has(index)) return loadingPromises.get(index);
   
   const promise = new Promise((resolve) => {
-    fetchQueue.push({ index, priority, resolve });
+    const item = { index, priority, resolve };
+    if (priority === "high") {
+      fetchQueue.unshift(item); // prioritize within the same queue
+    } else {
+      fetchQueue.push(item);
+    }
     processFetchQueue();
   });
   
@@ -76,33 +103,25 @@ function queuedPreload(index, priority = "auto") {
     if (loadingPromises.get(index) === promise) {
       loadingPromises.delete(index);
     }
+    processFetchQueue();
   });
   
   return promise;
 }
 
-async function preloadCompressed(index, priority = "auto") {
-  if (index > maxFoundIndex || blobCache.has(index)) return;
-  if (loadingPromises.has(index)) return loadingPromises.get(index);
-
-  const promise = doFetch(index, priority);
-  loadingPromises.set(index, promise);
-  
-  try {
-    await promise;
-  } finally {
-    if (loadingPromises.get(index) === promise) {
-      loadingPromises.delete(index);
-    }
-  }
+// Ensure critical images are loaded urgently
+async function preloadCompressed(index, priority = "auto", type = "low") {
+  return queuedPreload(index, priority, type);
 }
 
-async function getDecodedImage(index) {
+async function getDecodedImage(index, type = "low") {
   if (index < 0 || index > maxFoundIndex) return null;
+  const decodedCache = type === 'low' ? decodedCacheLow : decodedCacheHigh;
   if (decodedCache.has(index)) return decodedCache.get(index);
 
+  const blobCache = type === 'low' ? blobCacheLow : blobCacheHigh;
   if (!blobCache.has(index)) {
-    await preloadCompressed(index);
+    await queuedPreload(index, "high", type);
   }
   if (!blobCache.has(index)) return null;
 
@@ -119,53 +138,85 @@ async function getDecodedImage(index) {
 }
 
 async function updateCache() {
-  // 1. Prioritize current
-  await preloadCompressed(currentIndex, "high");
+  // 1. Prioritize current low
+  await preloadCompressed(currentIndex, "high", "low");
 
-  // 2. Prioritize immediate neighbors (Next, Prev)
+  // 2. Prioritize immediate neighbors (Next, Prev) low
   if (currentIndex > 0) {
     const priority = [currentIndex + 1, currentIndex - 1];
-    const neighborPromises = priority.map(idx => Promise.resolve(preloadCompressed(idx, "high")));
+    const neighborPromises = priority.map(idx => preloadCompressed(idx, "high", "low"));
     await Promise.all(neighborPromises);
   } else {
-    await preloadCompressed(currentIndex + 1, "high");
+    await preloadCompressed(currentIndex + 1, "high", "low");
   }
 
-  // Clean up old compressed
-  for (const [idx, url] of blobCache.entries()) {
-    if (idx < currentIndex - CACHE.CLEANUP_BUFFER || idx > currentIndex + CACHE.MAX_READAHEAD + CACHE.CLEANUP_BUFFER) {
+  // Same for high resolution of current
+  preloadCompressed(currentIndex, "auto", "high"); // queued via auto so it waits for all low
+
+  // Clean up old compressed low
+  for (const [idx, url] of blobCacheLow.entries()) {
+    if (idx < currentIndex - CACHE.CLEANUP_BUFFER || idx > currentIndex + CACHE.MAX_READAHEAD_LOW + CACHE.CLEANUP_BUFFER) {
       URL.revokeObjectURL(url);
-      blobCache.delete(idx);
+      blobCacheLow.delete(idx);
+    }
+  }
+  // Clean up old compressed high
+  for (const [idx, url] of blobCacheHigh.entries()) {
+    if (idx < currentIndex - CACHE.CLEANUP_BUFFER || idx > currentIndex + CACHE.MAX_READAHEAD_HIGH + CACHE.CLEANUP_BUFFER) {
+      URL.revokeObjectURL(url);
+      blobCacheHigh.delete(idx);
     }
   }
 
   // Keep exactly current, prev, next decoded
   const needed = [currentIndex - 1, currentIndex, currentIndex + 1];
   for (const idx of needed) {
-    if (idx >= 0 && idx <= maxFoundIndex) getDecodedImage(idx);
-  }
-
-  // Clean up old decoded
-  for (const [idx, img] of decodedCache.entries()) {
-    if (!needed.includes(idx)) {
-      img.src = '';
-      imagePool.push(img);
-      decodedCache.delete(idx);
+    if (idx >= 0 && idx <= maxFoundIndex) {
+      getDecodedImage(idx, "low");
+      // Pre-decode high in background too
+      getDecodedImage(idx, "high");
     }
   }
 
-  // 2. Deep readahead (delayed to allow critical requests to start first)
+  // Clean up old decoded low
+  for (const [idx, img] of decodedCacheLow.entries()) {
+    if (!needed.includes(idx)) {
+      img.src = '';
+      imagePool.push(img);
+      decodedCacheLow.delete(idx);
+    }
+  }
+  // Clean up old decoded high
+  for (const [idx, img] of decodedCacheHigh.entries()) {
+    if (!needed.includes(idx)) {
+      img.src = '';
+      imagePool.push(img);
+      decodedCacheHigh.delete(idx);
+    }
+  }
+
+  // Deep readahead
   setTimeout(() => {
-    for (let i = currentIndex + 2; i <= currentIndex + CACHE.MAX_READAHEAD; i++) {
-      if (i <= maxFoundIndex) queuedPreload(i);
+    // Low goes first in priority
+    for (let i = currentIndex + 2; i <= currentIndex + CACHE.MAX_READAHEAD_LOW; i++) {
+      if (i <= maxFoundIndex) queuedPreload(i, "auto", "low");
+    }
+    // High waits for low queue automatically due to processFetchQueue logic
+    for (let i = currentIndex + 1; i <= currentIndex + CACHE.MAX_READAHEAD_HIGH; i++) {
+        if (i <= maxFoundIndex) queuedPreload(i, "auto", "high");
     }
   }, TIMING.DEEP_READAHEAD_DELAY);
 }
 
 // ===== DOM ELEMENTS =====
 const layerTop = document.getElementById('layer-top');
-const imgTop = document.getElementById('img-top');
-const imgBottom = document.getElementById('img-bottom');
+const containerTop = document.getElementById('container-top');
+const imgTopLow = document.getElementById('img-top-low');
+const imgTopHigh = document.getElementById('img-top-high');
+
+const containerBottom = document.getElementById('container-bottom');
+const imgBottomLow = document.getElementById('img-bottom-low');
+const imgBottomHigh = document.getElementById('img-bottom-high');
 
 const btnFullscreen = document.getElementById('btn-fullscreen');
 const iconFsEnter = document.getElementById('icon-fs-enter');
@@ -190,10 +241,10 @@ function updateContainerSizes() {
     renderedWidth = window.innerWidth;
     renderedHeight = renderedWidth / IMAGE_RATIO;
   }
-  imgTop.style.width = `${renderedWidth}px`;
-  imgTop.style.height = `${renderedHeight}px`;
-  imgBottom.style.width = `${renderedWidth}px`;
-  imgBottom.style.height = `${renderedHeight}px`;
+  containerTop.style.width = `${renderedWidth}px`;
+  containerTop.style.height = `${renderedHeight}px`;
+  containerBottom.style.width = `${renderedWidth}px`;
+  containerBottom.style.height = `${renderedHeight}px`;
 }
 
 window.addEventListener('resize', () => {
@@ -258,18 +309,62 @@ function toggleLoading(show) {
   loadingSpinner.style.opacity = show ? '1' : '0';
 }
 
+async function transitionToHighWhenReady(index, lowImgEl, highImgEl) {
+  const imgHigh = await getDecodedImage(index, "high");
+  // Check if we are still on the same image
+  if (lowImgEl.dataset.index !== String(index)) return;
+  if (!imgHigh) return;
+
+  highImgEl.src = imgHigh.src;
+  
+  // Wait a frame to ensure src applies before opacity transition
+  requestAnimationFrame(() => {
+    if (lowImgEl.dataset.index !== String(index)) return;
+    highImgEl.style.transition = 'opacity 1s ease-in-out';
+    highImgEl.style.opacity = '1';
+
+    setTimeout(() => {
+      if (lowImgEl.dataset.index !== String(index)) return;
+      lowImgEl.style.display = 'none';
+    }, 1000);
+  });
+}
+
 // ===== DISPLAY LOGIC =====
 async function renderCurrent() {
   updateCache();
   toggleLoading(true);
-  const img = await getDecodedImage(currentIndex);
+
+  let imgHigh = decodedCacheHigh.get(currentIndex);
+  let imgLow = decodedCacheLow.get(currentIndex);
+
+  if (!imgLow && !imgHigh) {
+    imgLow = await getDecodedImage(currentIndex, "low");
+  }
+  if (!imgHigh) {
+    imgHigh = decodedCacheHigh.get(currentIndex);
+  }
+
   toggleLoading(false);
 
-  if (!img) {
+  if (!imgLow && !imgHigh) {
     return;
   }
 
-  imgTop.src = img.src;
+  imgTopLow.dataset.index = currentIndex;
+  imgTopHigh.style.transition = 'none';
+  imgTopHigh.style.opacity = '0';
+  imgTopLow.style.display = 'block';
+
+  if (imgHigh) {
+    imgTopHigh.src = imgHigh.src;
+    imgTopHigh.style.opacity = '1';
+    imgTopLow.style.display = 'none';
+  } else {
+    if (imgLow) imgTopLow.src = imgLow.src;
+    transitionToHighWhenReady(currentIndex, imgTopLow, imgTopHigh);
+  }
+
   localStorage.setItem(STORAGE_KEY, currentIndex);
 
   if (currentIndex === 0) {
@@ -286,17 +381,32 @@ async function prepareAdjacentImage(offset) {
   const targetIdx = currentIndex + offset;
   if (targetIdx < 0 || targetIdx > maxFoundIndex) return false;
 
-  let img = decodedCache.get(targetIdx);
-  if (!img) {
+  let imgHigh = decodedCacheHigh.get(targetIdx);
+  let imgLow = decodedCacheLow.get(targetIdx);
+
+  if (!imgLow && !imgHigh) {
     toggleLoading(true);
-    img = await getDecodedImage(targetIdx);
+    imgLow = await getDecodedImage(targetIdx, "low");
     toggleLoading(false);
   }
-  if (img) {
-    imgBottom.src = img.src;
-    return true;
+
+  if (!imgLow && !imgHigh) return false;
+
+  imgBottomLow.dataset.index = targetIdx;
+  imgBottomHigh.style.transition = 'none';
+  imgBottomHigh.style.opacity = '0';
+  imgBottomLow.style.display = 'block';
+
+  if (imgHigh) {
+    imgBottomHigh.src = imgHigh.src;
+    imgBottomHigh.style.opacity = '1';
+    imgBottomLow.style.display = 'none';
+  } else {
+    if (imgLow) imgBottomLow.src = imgLow.src;
+    transitionToHighWhenReady(targetIdx, imgBottomLow, imgBottomHigh);
   }
-  return false;
+
+  return true;
 }
 
 // ===== NAVIGATION ANIMATIONS =====
@@ -366,9 +476,9 @@ function clampPan() {
 
 function applyTransform() {
   if (isZoomed()) {
-    imgTop.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+    containerTop.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
   } else {
-    imgTop.style.transform = 'translate(0px, 0px) scale(1)';
+    containerTop.style.transform = 'translate(0px, 0px) scale(1)';
   }
 }
 

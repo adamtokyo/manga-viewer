@@ -15,12 +15,18 @@
     <div id="manga-container" class="absolute inset-0 flex items-center justify-center w-full h-full">
         <!-- Bottom Layer (Revealed during swipe) -->
         <div id="layer-bottom" class="absolute inset-0 flex items-center justify-center w-full h-full">
-            <img id="img-bottom" class="crisp-image object-contain" draggable="false" />
+            <div id="container-bottom" class="relative">
+                <img id="img-bottom-low" class="crisp-image object-contain absolute inset-0 w-full h-full" draggable="false" />
+                <img id="img-bottom-high" class="crisp-image object-contain absolute inset-0 w-full h-full opacity-0 transition-opacity duration-1000" draggable="false" />
+            </div>
         </div>
 
         <!-- Top Layer (Current Image) -->
         <div id="layer-top" class="absolute inset-0 flex items-center justify-center w-full h-full">
-            <img id="img-top" class="crisp-image object-contain shadow-2xl" draggable="false" />
+            <div id="container-top" class="relative shadow-2xl">
+                <img id="img-top-low" class="crisp-image object-contain absolute inset-0 w-full h-full" draggable="false" />
+                <img id="img-top-high" class="crisp-image object-contain absolute inset-0 w-full h-full opacity-0 transition-opacity duration-1000" draggable="false" />
+            </div>
         </div>
     </div>
 
