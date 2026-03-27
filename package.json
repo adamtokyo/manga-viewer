@@ -7,7 +7,8 @@
     "lint": "eslint src/ scripts/",
     "build": "npm run lint && tailwindcss -i ./src/input.css -o ./dist/output.css --minify && node scripts/build.js",
     "dev": "tailwindcss -i ./src/input.css -o ./dist/output.css --watch",
-    "build:prod": "npm run lint && NODE_ENV=production tailwindcss -i ./src/input.css -o ./dist/output.css --minify && node scripts/build.js"
+    "build:prod": "npm run lint && NODE_ENV=production tailwindcss -i ./src/input.css -o ./dist/output.css --minify && node scripts/build.js",
+    "test": "playwright test"
   },
   "keywords": [
     "manga",
@@ -19,6 +20,7 @@
   "license": "Apache-2.0",
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.58.2",
     "eslint": "^10.1.0",
     "globals": "^17.4.0",
     "playwright": "^1.58.2",
