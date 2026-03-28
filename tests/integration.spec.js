@@ -50,4 +50,27 @@ test.describe('Manga Viewer Integration', () => {
   // Verify we actually flipped through multiple pages
   expect(currentIndex).toBeGreaterThan(0);
 });
+
+  test('chapter skip menu functionality', async ({ page }) => {
+    // Navigate to the local application
+    await page.goto('http://127.0.0.1:3000');
+
+    // UI is visible on load, click the menu button
+    await page.locator('#btn-menu').click();
+
+    // Wait for side menu to slide out
+    const sideMenu = page.locator('#side-menu');
+    await expect(sideMenu).not.toHaveClass(/-translate-x-full/);
+
+    // Wait for chapters to load and click "Chapter 2"
+    const chapterBtn = page.locator('#chapter-list button', { hasText: 'Chapter 2' });
+    await chapterBtn.waitFor({ state: 'visible' });
+    await chapterBtn.click();
+
+    // Menu should close
+    await expect(sideMenu).toHaveClass(/.*-translate-x-full.*/);
+
+    // After animation or fetch, the data-index should update to 13
+    await expect(page.locator('#img-top-low')).toHaveAttribute('data-index', '13');
+  });
 });

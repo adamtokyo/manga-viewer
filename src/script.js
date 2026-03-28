@@ -219,6 +219,11 @@ const imgBottomLow = document.getElementById('img-bottom-low');
 const imgBottomHigh = document.getElementById('img-bottom-high');
 
 const btnFullscreen = document.getElementById('btn-fullscreen');
+const btnMenu = document.getElementById('btn-menu');
+const sideMenu = document.getElementById('side-menu');
+const menuOverlay = document.getElementById('menu-overlay');
+const btnCloseMenu = document.getElementById('btn-close-menu');
+const chapterList = document.getElementById('chapter-list');
 const iconFsEnter = document.getElementById('icon-fs-enter');
 const iconFsExit = document.getElementById('icon-fs-exit');
 const btnRewind = document.getElementById('btn-rewind');
@@ -262,6 +267,9 @@ function showUI() {
   btnFullscreen.classList.remove('opacity-0');
   btnFullscreen.classList.remove('pointer-events-none');
   btnFullscreen.classList.add('pointer-events-auto');
+  btnMenu.classList.remove('opacity-0');
+  btnMenu.classList.remove('pointer-events-none');
+  btnMenu.classList.add('pointer-events-auto');
   if (currentIndex > 0) {
     btnRewind.classList.remove('hidden');
     btnRewind.classList.remove('pointer-events-none');
@@ -287,6 +295,9 @@ function hideUI() {
   btnFullscreen.classList.add('opacity-0');
   btnFullscreen.classList.remove('pointer-events-auto');
   btnFullscreen.classList.add('pointer-events-none');
+  btnMenu.classList.add('opacity-0');
+  btnMenu.classList.remove('pointer-events-auto');
+  btnMenu.classList.add('pointer-events-none');
   btnRewind.classList.add('opacity-0');
   btnRewind.classList.remove('pointer-events-auto');
   btnRewind.classList.add('pointer-events-none');
@@ -450,6 +461,41 @@ function jumpToStart() {
   hideUI();
 }
 
+// ===== MENU LOGIC =====
+let isMenuOpen = false;
+
+function openMenu() {
+  isMenuOpen = true;
+  hideUI();
+  sideMenu.classList.remove('-translate-x-full');
+  menuOverlay.classList.remove('opacity-0', 'pointer-events-none');
+  menuOverlay.classList.add('pointer-events-auto');
+}
+
+function closeMenu() {
+  isMenuOpen = false;
+  sideMenu.classList.add('-translate-x-full');
+  menuOverlay.classList.remove('pointer-events-auto');
+  menuOverlay.classList.add('opacity-0', 'pointer-events-none');
+}
+
+function jumpToPage(pageIndex) {
+  if (isTransitioning || currentIndex === pageIndex) {
+    if (isMenuOpen) closeMenu();
+    return;
+  }
+  currentIndex = pageIndex;
+  resetZoom();
+  renderCurrent();
+  closeMenu();
+}
+
+btnMenu.addEventListener('pointerdown', (e) => e.stopPropagation());
+btnMenu.addEventListener('click', openMenu);
+btnCloseMenu.addEventListener('pointerdown', (e) => e.stopPropagation());
+btnCloseMenu.addEventListener('click', closeMenu);
+menuOverlay.addEventListener('click', closeMenu);
+
 // ===== ZOOM AND PAN STATE =====
 let scale = 1;
 let panX = 0, panY = 0;
@@ -494,6 +540,7 @@ let startTime = 0;
 let swipeOffsetPrepared = 0; // 1 for next, -1 for prev
 
 mangaContainer.addEventListener('pointerdown', (e) => {
+  if (isMenuOpen) return;
   if (e.target.closest('button')) return; // Ignore button clicks
   e.preventDefault();
   pointers.push({ id: e.pointerId, x: e.clientX, y: e.clientY });
@@ -612,6 +659,7 @@ mangaContainer.addEventListener('pointercancel', handlePointerUp);
 
 // ===== MOUSE WHEEL ZOOM =====
 mangaContainer.addEventListener('wheel', (e) => {
+  if (isMenuOpen) return;
   e.preventDefault();
   const zoomAmount = -e.deltaY * ZOOM.THRESHOLD;
   const newScale = Math.max(ZOOM.MIN, Math.min(scale + zoomAmount, ZOOM.MAX));
@@ -641,7 +689,7 @@ function handleTap(x, y) {
       flashElement('zone-right');
       gotoPrev();
     } else {
-      showUI();
+      if (!isMenuOpen) showUI();
     }
   }
 }
@@ -672,6 +720,10 @@ document.addEventListener('fullscreenchange', () => {
 
 // ===== KEYBOARD CONTROLS =====
 document.addEventListener('keydown', (e) => {
+  if (isMenuOpen) {
+    if (e.key === 'Escape') closeMenu();
+    return;
+  }
   if (isZoomed()) {
     if (e.key === 'ArrowLeft') panX += PAN_AMOUNT;
     else if (e.key === 'ArrowRight') panX -= PAN_AMOUNT;
@@ -689,6 +741,34 @@ document.addEventListener('keydown', (e) => {
 updateContainerSizes();
 showUI(); // Initial display of UI
 renderCurrent();
+
+// Fetch chapters
+fetch('./dist/index.json')
+  .then(res => res.json())
+  .then(chapters => {
+    chapters.forEach(chapter => {
+      const li = document.createElement('li');
+      li.className = 'border-b border-white/5 last:border-0';
+      const btn = document.createElement('button');
+      btn.className = 'w-full text-left px-5 py-4 hover:bg-white/5 active:bg-white/10 transition-colors pointer-events-auto flex items-center justify-between text-white/90 hover:text-white';
+      
+      const titleSpan = document.createElement('span');
+      titleSpan.textContent = chapter.name;
+      titleSpan.className = 'font-medium truncate pr-4';
+      
+      const pgSpan = document.createElement('span');
+      pgSpan.textContent = `p.${chapter.page}`;
+      pgSpan.className = 'text-white/40 text-sm whitespace-nowrap';
+
+      btn.appendChild(titleSpan);
+      btn.appendChild(pgSpan);
+      
+      btn.addEventListener('click', () => jumpToPage(chapter.page));
+      li.appendChild(btn);
+      chapterList.appendChild(li);
+    });
+  })
+  .catch(err => console.error('Failed to load chapters:', err));
 
 // Hide onboarding if not first image
 if (currentIndex !== 0) {

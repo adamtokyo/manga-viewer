@@ -35,7 +35,15 @@
 
         <!-- Top 1/5th: Fullscreen Toggle Zone -->
         <div id="zone-top"
-            class="w-full h-[20%] pointer-events-none transition-colors duration-200 flex items-start justify-end p-4">
+            class="w-full h-[20%] pointer-events-none transition-colors duration-200 flex items-start justify-between p-4">
+            <button id="btn-menu"
+                class="pointer-events-none p-3 bg-black/50 rounded-full backdrop-blur-sm transition-opacity duration-300 opacity-0 text-white hover:bg-white/20">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="3" y1="12" x2="21" y2="12"></line>
+                    <line x1="3" y1="6" x2="21" y2="6"></line>
+                    <line x1="3" y1="18" x2="21" y2="18"></line>
+                </svg>
+            </button>
             <button id="btn-fullscreen"
                 class="pointer-events-none p-3 bg-black/50 rounded-full backdrop-blur-sm transition-opacity duration-300 opacity-0 text-white hover:bg-white/20">
                 <svg id="icon-fs-enter" xmlns="http://www.w3.org/2000/svg" class="w-8 h-8" viewBox="0 0 24 24"
@@ -117,6 +125,25 @@
         </div>
     </div>
 
+
+    <!-- Menu Overlay -->
+    <div id="menu-overlay" class="absolute inset-0 bg-black/60 backdrop-blur-sm opacity-0 pointer-events-none transition-opacity duration-300 z-[60]"></div>
+
+    <!-- Side Menu -->
+    <div id="side-menu" class="absolute top-0 left-0 h-full w-80 bg-zinc-950 text-white transform -translate-x-full transition-transform duration-300 z-[70] flex flex-col shadow-2xl border-r border-white/10 pointer-events-auto">
+        <div class="p-5 flex items-center justify-between border-b border-white/10 shrink-0">
+            <h2 class="text-xl font-bold tracking-wider text-white">Chapters</h2>
+            <button id="btn-close-menu" class="p-2 -mr-2 hover:bg-white/10 rounded-full transition-colors text-white/70 hover:text-white">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+            </button>
+        </div>
+        <ul id="chapter-list" class="flex-1 overflow-y-auto w-full py-2 overscroll-contain">
+            <!-- Dynamically populated -->
+        </ul>
+    </div>
 
     <script type="module" src="./src/script.js"></script>
 </body>

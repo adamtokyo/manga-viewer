@@ -58,6 +58,8 @@ const scriptSource = path.join(rootDir, 'src', 'script.js');
 let scriptContent = fs.readFileSync(scriptSource, 'utf-8');
 // Update import from './constants.js' to `./constants.${constantsHash}.js`
 scriptContent = scriptContent.replace(/['"]\.\/constants\.js['"]/, `'./constants.${constantsHash}.js'`);
+// Map fetch path
+scriptContent = scriptContent.replace(/['"]\.\/dist\/index\.json['"]/, `'./index.json'`);
 const scriptHash = getHash(scriptContent);
 const scriptDest = path.join(distDir, `script.${scriptHash}.js`);
 fs.writeFileSync(scriptDest, scriptContent, 'utf-8');
