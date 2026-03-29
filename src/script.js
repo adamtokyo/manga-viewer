@@ -67,7 +67,7 @@ async function processFetchQueue() {
     activeFetches++;
     const { index, priority, resolve } = item;
     const blobCache = type === 'low' ? blobCacheLow : blobCacheHigh;
-    
+
     try {
       if (!blobCache.has(index)) {
         await doFetch(index, priority, type);
@@ -86,7 +86,7 @@ function queuedPreload(index, priority = "auto", type = "low") {
 
   if (index > maxFoundIndex || blobCache.has(index)) return Promise.resolve();
   if (loadingPromises.has(index)) return loadingPromises.get(index);
-  
+
   const promise = new Promise((resolve) => {
     const item = { index, priority, resolve };
     if (priority === "high") {
@@ -96,16 +96,16 @@ function queuedPreload(index, priority = "auto", type = "low") {
     }
     processFetchQueue();
   });
-  
+
   loadingPromises.set(index, promise);
-  
+
   promise.finally(() => {
     if (loadingPromises.get(index) === promise) {
       loadingPromises.delete(index);
     }
     processFetchQueue();
   });
-  
+
   return promise;
 }
 
@@ -203,7 +203,7 @@ async function updateCache() {
     }
     // High waits for low queue automatically due to processFetchQueue logic
     for (let i = currentIndex + 1; i <= currentIndex + CACHE.MAX_READAHEAD_HIGH; i++) {
-        if (i <= maxFoundIndex) queuedPreload(i, "auto", "high");
+      if (i <= maxFoundIndex) queuedPreload(i, "auto", "high");
     }
   }, TIMING.DEEP_READAHEAD_DELAY);
 }
@@ -312,8 +312,16 @@ function flashElement(id) {
 }
 
 function showNoEntry() {
+  const animation = noEntryIcon.animate([
+    { opacity: 1 },
+    { opacity: 0 }
+  ], {
+    duration: TIMING.NO_ENTRY_DISPLAY,
+    easing: 'ease-out'
+  });
+
   noEntryIcon.style.opacity = '1';
-  setTimeout(() => noEntryIcon.style.opacity = '0', TIMING.NO_ENTRY_DISPLAY);
+  animation.finished.then(() => { noEntryIcon.style.opacity = '0'; });
 }
 
 function toggleLoading(show) {
@@ -327,17 +335,25 @@ async function transitionToHighWhenReady(index, lowImgEl, highImgEl) {
   if (!imgHigh) return;
 
   highImgEl.src = imgHigh.src;
-  
+
   // Wait a frame to ensure src applies before opacity transition
   requestAnimationFrame(() => {
     if (lowImgEl.dataset.index !== String(index)) return;
-    highImgEl.style.transition = 'opacity 1s ease-in-out';
+
+    const animation = highImgEl.animate([
+      { opacity: 0 },
+      { opacity: 1 }
+    ], {
+      duration: 1000,
+      easing: 'ease-in-out'
+    });
+
     highImgEl.style.opacity = '1';
 
-    setTimeout(() => {
+    animation.finished.catch(() => { }).finally(() => {
       if (lowImgEl.dataset.index !== String(index)) return;
       lowImgEl.style.display = 'none';
-    }, 1000);
+    });
   });
 }
 
@@ -363,7 +379,6 @@ async function renderCurrent() {
   }
 
   imgTopLow.dataset.index = currentIndex;
-  imgTopHigh.style.transition = 'none';
   imgTopHigh.style.opacity = '0';
   imgTopLow.style.display = 'block';
 
@@ -404,7 +419,6 @@ async function prepareAdjacentImage(offset) {
   if (!imgLow && !imgHigh) return false;
 
   imgBottomLow.dataset.index = targetIdx;
-  imgBottomHigh.style.transition = 'none';
   imgBottomHigh.style.opacity = '0';
   imgBottomLow.style.display = 'block';
 
@@ -425,29 +439,53 @@ async function animateTo(offset) {
   if (isTransitioning) return;
   const targetIdx = currentIndex + offset;
   if (targetIdx < 0) return;
-
-  const isReady = await prepareAdjacentImage(offset);
-  if (!isReady) {
-    if (offset > 0) showNoEntry();
+  if (targetIdx > maxFoundIndex) {
+    showNoEntry();
     return;
   }
 
-  isTransitioning = true;
-  // Next (offset +1): Swipe Right -> layerTop moves right (+100vw)
-  // Prev (offset -1): Swipe Left -> layerTop moves left (-100vw)
-  const dirX = offset > 0 ? window.innerWidth : -window.innerWidth;
+  isTransitioning = true; // Lock immediately to prevent race conditions
 
-  layerTop.style.transition = `transform ${TIMING.SWIPE_ANIMATION}ms ${EASING.SWIPE}`;
-  layerTop.style.transform = `translateX(${dirX}px)`;
+  try {
+    let isReady = false;
+    try {
+      isReady = await prepareAdjacentImage(offset);
+    } catch (e) {
+      console.error("Failed adjacent image fetch", e);
+    }
 
-  setTimeout(() => {
+    if (!isReady) {
+      if (offset > 0) showNoEntry();
+      return;
+    }
+
+    // Next (offset +1): Swipe Right -> layerTop moves right (+100vw)
+    // Prev (offset -1): Swipe Left -> layerTop moves left (-100vw)
+    const dirX = offset > 0 ? window.innerWidth : -window.innerWidth;
+
+    const currentTransform = layerTop.style.transform || 'translateX(0px)';
+
+    const animation = layerTop.animate([
+      { transform: currentTransform },
+      { transform: `translateX(${dirX}px)` }
+    ], {
+      duration: TIMING.SWIPE_ANIMATION,
+      easing: 'ease-out'
+    });
+
+    try {
+      await animation.finished;
+    } catch {
+      // Ignore aborts
+    }
+
+    layerTop.style.transform = 'translateX(0px)';
     currentIndex = targetIdx;
-    layerTop.style.transition = 'none';
-    layerTop.style.transform = 'translateX(0)';
-    resetZoom();
+    resetZoomInstantly();
     renderCurrent();
+  } finally {
     isTransitioning = false;
-  }, TIMING.SWIPE_ANIMATION);
+  }
 }
 
 function gotoNext() { animateTo(1); }
@@ -502,11 +540,33 @@ let panX = 0, panY = 0;
 
 function isZoomed() { return scale > ZOOM.ZOOM_THRESHOLD; }
 
-function resetZoom() {
+function resetZoomInstantly() {
   scale = 1;
   panX = 0;
   panY = 0;
   applyTransform();
+}
+
+function resetZoom() {
+  if (scale === 1 && panX === 0 && panY === 0) return;
+  if (isTransitioning) {
+    resetZoomInstantly();
+  } else {
+    isTransitioning = true;
+    const currentTransform = containerTop.style.transform || `translate(${panX}px, ${panY}px) scale(${scale})`;
+    scale = 1; panX = 0; panY = 0;
+
+    containerTop.animate([
+      { transform: currentTransform },
+      { transform: 'translate(0px, 0px) scale(1)' }
+    ], {
+      duration: TIMING.SWIPE_ANIMATION,
+      easing: 'ease-out'
+    }).finished.catch(() => { }).finally(() => {
+      applyTransform();
+      isTransitioning = false;
+    });
+  }
 }
 
 function clampPan() {
@@ -538,6 +598,7 @@ let startX = 0, startY = 0;
 let lastPanX = 0, lastPanY = 0;
 let startTime = 0;
 let swipeOffsetPrepared = 0; // 1 for next, -1 for prev
+let isPreparingAdjacent = false; // Lock flag for pointer movements
 
 mangaContainer.addEventListener('pointerdown', (e) => {
   if (isMenuOpen) return;
@@ -603,13 +664,22 @@ mangaContainer.addEventListener('pointermove', async (e) => {
       // Swiping
       if (Math.abs(dx) > GESTURES.SWIPE_DEADZONE) {
         const offset = dx > 0 ? 1 : -1; // dx>0 (drag right) = Next, dx<0 (drag left) = Prev
-        if (swipeOffsetPrepared !== offset) {
-          const ready = await prepareAdjacentImage(offset);
-          if (ready) swipeOffsetPrepared = offset;
-          else swipeOffsetPrepared = 0; // Hit boundary
+
+        if (swipeOffsetPrepared !== offset && !isPreparingAdjacent) {
+          isPreparingAdjacent = true;
+          prepareAdjacentImage(offset).catch(() => false).then(ready => {
+            if (ready) swipeOffsetPrepared = offset;
+            else swipeOffsetPrepared = 0; // Hit boundary
+            isPreparingAdjacent = false;
+
+            // Only visually update if still swiping
+            if (pointers.length === 1 && swipeOffsetPrepared === offset) {
+              layerTop.style.transform = `translateX(${pointers[0].x - startX}px)`;
+            }
+          });
         }
 
-        if (swipeOffsetPrepared !== 0) {
+        if (swipeOffsetPrepared === offset) {
           layerTop.style.transform = `translateX(${dx}px)`;
         }
       }
@@ -637,14 +707,23 @@ function handlePointerUp(e) {
       // Panning ends
     } else {
       // Swiping logic
-      if (Math.abs(dx) > GESTURES.SWIPE_COMMIT && swipeOffsetPrepared !== 0) {
+      if (Math.abs(dx) > GESTURES.SWIPE_COMMIT && swipeOffsetPrepared !== 0 && swipeOffsetPrepared === (dx > 0 ? 1 : -1)) {
         // Commit swipe
         animateTo(swipeOffsetPrepared);
       } else if (Math.abs(dx) > GESTURES.SWIPE_DEADZONE) {
-        // Revert swipe
-        layerTop.style.transition = `transform ${TIMING.SWIPE_ANIMATION}ms ${EASING.SWIPE}`;
-        layerTop.style.transform = 'translateX(0)';
-        setTimeout(() => layerTop.style.transition = 'none', TIMING.SWIPE_ANIMATION);
+        // Revert swipe cleanly using Web Animations API
+        isTransitioning = true;
+        const currentTransform = layerTop.style.transform || `translateX(${dx}px)`;
+        layerTop.animate([
+          { transform: currentTransform },
+          { transform: 'translateX(0px)' }
+        ], {
+          duration: TIMING.SWIPE_ANIMATION,
+          easing: 'ease-out'
+        }).finished.catch(() => { }).finally(() => {
+          layerTop.style.transform = 'translateX(0px)';
+          isTransitioning = false;
+        });
       } else if (Math.abs(dx) <= GESTURES.TAP_THRESHOLD && Math.abs(dy) <= GESTURES.TAP_THRESHOLD && duration < GESTURES.TAP_DURATION) {
         // Tap detected
         handleTap(e.clientX, e.clientY);
@@ -751,18 +830,18 @@ fetch('./dist/index.json')
       li.className = 'border-b border-white/5 last:border-0';
       const btn = document.createElement('button');
       btn.className = 'w-full text-left px-5 py-4 hover:bg-white/5 active:bg-white/10 transition-colors pointer-events-auto flex items-center justify-between text-white/90 hover:text-white';
-      
+
       const titleSpan = document.createElement('span');
       titleSpan.textContent = chapter.name;
       titleSpan.className = 'font-medium truncate pr-4';
-      
+
       const pgSpan = document.createElement('span');
       pgSpan.textContent = `p.${chapter.page}`;
       pgSpan.className = 'text-white/40 text-sm whitespace-nowrap';
 
       btn.appendChild(titleSpan);
       btn.appendChild(pgSpan);
-      
+
       btn.addEventListener('click', () => jumpToPage(chapter.page));
       li.appendChild(btn);
       chapterList.appendChild(li);

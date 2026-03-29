@@ -73,4 +73,44 @@ test.describe('Manga Viewer Integration', () => {
     // After animation or fetch, the data-index should update to 13
     await expect(page.locator('#img-top-low')).toHaveAttribute('data-index', '13');
   });
+
+  test('rapid backwards swipe does not get stuck', async ({ page }) => {
+    await page.goto('http://127.0.0.1:3000');
+    
+    // Jump to chapter 2 (index 13) via menu to give us pages to swipe back through
+    await page.locator('#btn-menu').click();
+    const chapterBtn = page.locator('#chapter-list button', { hasText: 'Chapter 2' });
+    await chapterBtn.waitFor({ state: 'visible' });
+    await chapterBtn.click();
+    await expect(page.locator('#img-top-low')).toHaveAttribute('data-index', '13');
+
+    // Swipe backwards (right-to-left, meaning dx < 0, offset = -1) to index 0 using manual pointer events
+    let currentIndex = 13;
+    const body = page.locator('body');
+
+    while (currentIndex > 0) {
+      // Simulate rapid right-to-left swipe
+      const box = await body.boundingBox();
+      const startX = box.width * 0.8;
+      const endX = box.width * 0.2;
+      const startY = box.height / 2;
+
+      await page.mouse.move(startX, startY);
+      await page.mouse.down();
+      // Fast move
+      await page.mouse.move(endX, startY, { steps: 5 });
+      await page.mouse.up();
+
+      currentIndex -= 1;
+      
+      // Wait for the animation to transition the index naturally
+      await expect(page.locator('#img-top-low')).toHaveAttribute('data-index', String(currentIndex), { timeout: 1000 });
+      
+      // Check that layerTop transform is reset to 0 after animation finishes (no overlapping stuck state)
+      const transform = await page.locator('#layer-top').evaluate(el => el.style.transform);
+      expect(transform).toBe('translateX(0px)');
+    }
+
+    expect(currentIndex).toBe(0);
+  });
 });
