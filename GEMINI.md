@@ -47,6 +47,9 @@ npx playwright test
 ```
 Tests interact with a local webserver running on port `3000` mapping to `./dist`. Before running tests, you MUST have run the build script `npm run build` so that `dist/index.html` and assets exist.
 
+> [!IMPORTANT]
+> Always run `npm run test` as an extra sanity check after `npm run build` to ensure no regressions were introduced. Note that the Playwright tests take about a minute to complete (as they simulate flipping through all pages), so please be patient with them.
+
 ### Deployment & Release
 The `./update.sh` script automates pulling the latest `main` branch, running the production build `npm run build:prod`, and syncing the `dist/*` files over to a remote Caddy web root directory.
 

@@ -2,7 +2,6 @@ import {
   STORAGE_KEY,
   CACHE,
   TIMING,
-  EASING,
   ZOOM,
   GESTURES,
   UI_ZONES,

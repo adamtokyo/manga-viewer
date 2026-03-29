@@ -27,10 +27,6 @@ export const TIMING = {
   FS_CHANGE_DELAY: 100,         // ms after fullscreen change for resize
 };
 
-// ===== ANIMATION EASING =====
-export const EASING = {
-  SWIPE: 'ease-out',
-};
 
 // ===== ZOOM & PAN CONFIGURATION =====
 export const ZOOM = {
