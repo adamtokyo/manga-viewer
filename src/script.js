@@ -821,7 +821,7 @@ showUI(); // Initial display of UI
 renderCurrent();
 
 // Fetch chapters
-fetch('./dist/index.json')
+fetch('./dist/index.json', { cache: 'no-cache' })
   .then(res => res.json())
   .then(chapters => {
     chapters.forEach(chapter => {
