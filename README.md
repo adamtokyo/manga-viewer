@@ -11,8 +11,9 @@ A lightweight, touch-optimized manga/comic viewer built with vanilla JavaScript 
   - Tap zones for navigation and fullscreen
 
 - **Performance**
-  - Efficient image caching (compressed + decoded)
-  - Lazy loading with intelligent readahead
+  - Dual-resolution loading (`low-` res fallback with seamless transition to `high-` res)
+  - Aggressive image pooling and cache readahead for zero-latency swiping
+  - Instant chapter skip menu using `index.json`
   - Minimal bundle size (~12KB CSS)
 
 - **User Experience**
@@ -48,31 +49,39 @@ npm run dev
 # Create deployable dist/ folder
 npm run build
 
-# Copy images to dist/
-cp *.avif dist/
+# Copy images and index.json to dist/
+cp *.avif index.json dist/
 
 # Deploy dist/ folder to your server
 ```
 
 ## Usage
 
-1. Place your manga/comic images in the root directory with names: `000.avif`, `001.avif`, `002.avif`, etc.
-2. Open `index.html` in a browser
-3. Navigate with:
+1. Place your manga/comic images in the root directory. You must provide a high and low-resolution version for every page: `high-000.avif`, `low-000.avif`, `high-001.avif`, `low-001.avif`, etc.
+2. Create an `index.json` in the root directory to define the chapter skip menu. (e.g., `[{"title": "Chapter 1", "index": 0}, {"title": "Chapter 2", "index": 20}]`)
+3. Open `index.html` via a local HTTP server
+4. Navigate with:
    - **Swipe/Arrow Keys**: Move between pages
    - **Pinch/Mouse Wheel**: Zoom
    - **Tap top**: Fullscreen toggle
-   - **Tap bottom right**: Jump to start (if not on first page)
+   - **Tap center**: Toggle UI and chapter skip menu
+   - **Tap bottom**: Jump to start (if not on first page)
 
 For deployment instructions, see [DEPLOY.md](DEPLOY.md).
 
-## Image Format
+## Image Format & Indexing
 
-Images should be:
+The viewer uses a **dual-resolution loading strategy** for optimal performance:
 - **Format**: AVIF (highly recommended for size), or any format browsers support (JPEG, WebP, PNG)
-- **Naming**: Sequential, zero-padded (e.g., `000.avif`, `001.avif`, `002.avif`)
+- **Naming**: You MUST provide two variants of each image:
+  - `low-XXX.avif` (e.g. `low-000.avif`): A low-resolution/high-compression version loaded immediately.
+  - `high-XXX.avif` (e.g. `high-000.avif`): The full-quality image loaded in the background with a seamless transition.
+- **index.json**: Required to power the skip-to-chapter menu.
+
+**Image Recommendations:**
 - **Aspect Ratio**: 2:3 (portrait orientation, like a manga page)
-- **Resolution**: 1024×1536 or higher recommended
+- **High Resolution**: 1024×1536 or higher
+- **Low Resolution**: 512×768 or lower, highly compressed
 
 ## Project Structure
 
